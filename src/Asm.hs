@@ -6,11 +6,16 @@ module Asm (
   where
 
 import Data.List.Split (splitOn)
-import Data.List (intercalate, isPrefixOf, isInfixOf, elemIndex, splitAt)
+import Data.List (intercalate, isPrefixOf, isInfixOf, isSuffixOf, elemIndex,
+                  splitAt)
 import Control.Monad.Except
 import Data.Text (strip, pack, unpack)
 
-type Instruction = String
+data Instruction = Instruction {
+  asm :: String,
+  labels :: [String]
+}
+
 data Program = Program {
   instructions :: [Instruction],
   readOnlyData :: [Instruction]
@@ -26,7 +31,9 @@ stringToProgram rawInput = do
               splitOn "\n" $ rawInput
   (inputWithoutROData, readOnlyData) <- extractReadOnlyData input
 
-  return $ Program inputWithoutROData readOnlyData where
+  return $ Program
+    (stringsToInstructions inputWithoutROData)
+    (stringsToInstructions readOnlyData) where
 
     -- | Filter out ASM commands that are not needed
     filterUnneeded :: [String] -> [String]
@@ -55,5 +62,18 @@ stringToProgram rawInput = do
 -- | Turn a program into ASM string
 programToString :: Program -> String
 programToString (Program instructions readOnly) =
-  intercalate "\n" (readOnly ++ instructions)
+  intercalate "\n"
+  (instructionsToStrings readOnly ++ instructionsToStrings instructions)
+
+stringsToInstructions :: [String] -> [Instruction]
+stringsToInstructions = stringsToInstructions' [] where
+  stringsToInstructions' :: [String] -> [String] -> [Instruction]
+  stringsToInstructions' labels [] = []
+  stringsToInstructions' labels (i : instructions) =
+    if ":" `isSuffixOf` i
+    then stringsToInstructions' (i : labels) instructions
+    else Instruction i labels : stringsToInstructions' [] instructions
+
+instructionsToStrings :: [Instruction] -> [String]
+instructionsToStrings = concatMap (\(Instruction asm labels) -> labels ++ [asm])
 
