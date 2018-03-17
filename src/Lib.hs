@@ -71,5 +71,9 @@ cFileToAsmFile inputPath directory programIndex = do
 asmFileToProgram
   :: FilePath -- ^ The path of the ASM file
   -> IO Asm.Program -- ^ The program
-asmFileToProgram inputPath = Asm.stringToProgram <$> readFile inputPath
+asmFileToProgram inputPath = do
+  contents <- readFile inputPath
+  case Asm.stringToProgram contents of
+    Left e -> error $ "Error trying to parse ASM: " ++ e
+    Right program -> return program
 

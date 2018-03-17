@@ -24,6 +24,8 @@ dependencies:
 - temporary
 - filepath
 - split
+- mtl
+- text
 
 library:
   source-dirs: src
