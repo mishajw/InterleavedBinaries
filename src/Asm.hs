@@ -1,6 +1,6 @@
 module Asm (
-    Instruction,
-    Program,
+    Instruction (..),
+    Program (..),
     stringToProgram,
     programToString)
   where

@@ -5,6 +5,7 @@ module Lib (
   saveProgram)
   where
 
+import AsmTransformer (transform)
 import System.FilePath.Posix ((</>), (<.>))
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (readProcessWithExitCode)
@@ -16,7 +17,7 @@ interleavePrograms
   :: Asm.Program -- ^ The first program to interleave
   -> Asm.Program -- ^ The second program to interleave
   -> Asm.Program -- ^ The interleaved program
-interleavePrograms a _ = a
+interleavePrograms (Asm.Program ins rod) _ = Asm.Program (transform ins) rod
 
 -- | Interleave two .c files
 -- Delagates to @interleavePrograms@
