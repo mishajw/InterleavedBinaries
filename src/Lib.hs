@@ -1,7 +1,8 @@
 module Lib (
   interleavePrograms,
   interleaveCFiles,
-  interleaveAsmFiles)
+  interleaveAsmFiles,
+  saveProgram)
   where
 
 import System.FilePath.Posix ((</>), (<.>))
@@ -39,6 +40,13 @@ interleaveAsmFiles
   -> IO Asm.Program -- ^ the interleaved program
 interleaveAsmFiles path1 path2 =
   interleavePrograms <$> asmFileToProgram path1 <*> asmFileToProgram path2
+
+-- | Save a program to an ASM file
+saveProgram
+  :: FilePath -- ^ Where to save the file
+  -> Asm.Program -- ^ The program to save
+  -> IO ()
+saveProgram path program = writeFile path $ Asm.programToString program
 
 -- | Change a .c file to an ASM (.s) file
 cFileToAsmFile
