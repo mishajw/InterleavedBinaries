@@ -20,6 +20,10 @@ description:         Please see the README on Github at <https://github.com/mish
 
 dependencies:
 - base >= 4.7 && < 5
+- process
+- temporary
+- filepath
+- split
 
 library:
   source-dirs: src
