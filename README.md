@@ -4,7 +4,7 @@ Combines two binaries into one, by taking the instructions of one and interleavi
 
 ## Pros:
 1) Time not spent on pesky context switching between processes
-2) Convinient to only run one binary instead of two - half the commands needed!
+2) Convenient to only run one binary instead of two - half the commands needed!
 
 ## Cons:
 Too many to count, but if we try:
