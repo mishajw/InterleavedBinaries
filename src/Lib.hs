@@ -87,7 +87,7 @@ cFileToAsmFile
 cFileToAsmFile inputPath outputPath = do
   -- let asmFile = directory </> ("asm" ++ show programIndex) <.> "s"
   (exitCode, _, _) <- readProcessWithExitCode "gcc" [
-    "-O0",
+    "-O0", "-fno-asynchronous-unwind-tables",
     "-S", inputPath,
     "-o", outputPath] ""
 
