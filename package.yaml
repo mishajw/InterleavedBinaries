@@ -26,6 +26,7 @@ dependencies:
 - split
 - mtl
 - text
+- regex-compat
 
 library:
   source-dirs: src

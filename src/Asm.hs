@@ -10,9 +10,11 @@ import Data.List (intercalate, isPrefixOf, isInfixOf, isSuffixOf, elemIndex,
                   splitAt)
 import Control.Monad.Except
 import Data.Text (strip, pack, unpack)
+import Text.Regex (mkRegex, matchRegex)
 
 data Instruction = Instruction {
-  asm :: String,
+  command :: String,
+  arguments :: [String],
   labels :: [String]
 }
 
@@ -70,10 +72,20 @@ stringsToInstructions = stringsToInstructions' [] where
   stringsToInstructions' :: [String] -> [String] -> [Instruction]
   stringsToInstructions' labels [] = []
   stringsToInstructions' labels (i : instructions) =
-    if ":" `isSuffixOf` i
-    then stringsToInstructions' (i : labels) instructions
-    else Instruction i labels : stringsToInstructions' [] instructions
+    let insRegex = mkRegex "^([a-zA-Z0-9]+)\t(.*)$" in
+    let labelRegex = mkRegex "^(.*)\\:$" in
+    case (matchRegex labelRegex i, matchRegex insRegex i) of
+      (Just [label], _) -> stringsToInstructions' (label : labels) instructions
+      (_, Just [command, arguments]) ->
+        Instruction command (splitOn ", " arguments) labels :
+        stringsToInstructions' [] instructions
+      _ -> Instruction i [] labels : stringsToInstructions' [] instructions
 
 instructionsToStrings :: [Instruction] -> [String]
-instructionsToStrings = concatMap (\(Instruction asm labels) -> labels ++ [asm])
+instructionsToStrings = concatMap instructionToString
+
+instructionToString :: Instruction -> [String]
+instructionToString (Instruction com args labels) =
+  map (++ ":") labels ++
+  [com ++ "\t" ++ intercalate ", " args]
 
