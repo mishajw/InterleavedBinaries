@@ -8,6 +8,7 @@ module Lib (
   where
 
 import AsmTransformer (transform)
+import InstructionInterleave (interleave)
 import System.FilePath.Posix ((</>), (<.>), dropExtension, takeFileName)
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (readProcessWithExitCode)
@@ -19,7 +20,13 @@ interleavePrograms
   :: Asm.Program -- ^ The first program to interleave
   -> Asm.Program -- ^ The second program to interleave
   -> Asm.Program -- ^ The interleaved program
-interleavePrograms (Asm.Program ins rod) _ = Asm.Program (transform ins) rod
+interleavePrograms prog0 prog1 =
+  let prog0Ins = transform 0 (Asm.instructions prog0) in
+  let prog1Ins = transform 1 (Asm.instructions prog1) in
+  prog0 {
+    Asm.instructions = interleave prog0Ins prog1Ins
+    -- Asm.readOnlyData = (Asm.readOnlyData)
+  }
 
 -- | Interleave two .c files
 -- Delagates to @interleavePrograms@
