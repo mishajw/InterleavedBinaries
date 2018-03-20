@@ -1,6 +1,7 @@
 module Asm (
     Instruction (..),
     Program (..),
+    insertAtLabel,
     stringToProgram,
     programToString)
   where
@@ -24,6 +25,21 @@ data Program = Program {
 }
 
 type Result = Either String
+
+-- | Insert instructions at the top of some label
+insertAtLabel
+  :: String -- ^ The label to insert at
+  -> [Asm.Instruction] -- ^ The instructions to insert at the label
+  -> [Asm.Instruction] -- ^ The instructions to insert into
+  -> [Asm.Instruction] -- ^ The instructions with inserted instructions
+insertAtLabel label toInsert ins =
+  let toInsertLabeled = (head toInsert) {Asm.labels = [label]} :
+                            tail toInsert in
+  let (preLabel, postLabel) = break (\a -> label `elem` Asm.labels a) ins in
+  preLabel ++
+    toInsertLabeled ++
+    [(head postLabel) {Asm.labels = []}] ++
+    tail postLabel
 
 -- | Create a program from an ASM string
 stringToProgram :: String -> Result Program
