@@ -1,9 +1,9 @@
 #include <stdio.h>
 
 int main() {
-  long a = 0;
-  long b = 0;
+  long a = 1;
+  long b = 2;
   long c = a + b;
-  printf("%ld\n", c);
+  printf("c: %ld\n", c);
 }
 
