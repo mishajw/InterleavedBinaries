@@ -12,7 +12,8 @@ transform
   -> [Asm.Instruction] -- ^ The transformed instruction
 transform i =
   let registers = if i == 0 then registers0 else registers1 in
-  RegisterAllocation.allocate registers . concatMap resolveImplicitRegister
+  RegisterAllocation.allocate registers (\rs -> (head rs, tail rs)) .
+  concatMap resolveImplicitRegister
   where
     registers0 :: [Reg]
     registers0 = map Reg ["ax", "bx", "cx", "dx", "si", "di", "sp", "bp"]

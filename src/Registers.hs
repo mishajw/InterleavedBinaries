@@ -6,7 +6,7 @@ module Registers (
 
 import Data.Maybe (catMaybes)
 import Text.Read
-import Text.Regex (mkRegex, matchRegex)
+import Text.Regex (mkRegex, matchRegex, matchRegexAll)
 
 validRegisterNames :: [String]
 validRegisterNames =
