@@ -16,21 +16,21 @@ transform i =
   allocateRegisters registers . concatMap resolveImplicitRegister
   where
     registers0 :: [String]
-    registers0 = ["rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rsp", "rbp"]
+    registers0 = ["eax", "ebx", "ecx", "edx", "esi", "edi", "esp", "ebp"]
     registers1 :: [String]
-    registers1 = map (("r" ++) . show) [8..15]
+    registers1 = map ((++ "d") . ("r" ++) . show) [8..15]
 
 resolveImplicitRegister :: Asm.Instruction -> [Asm.Instruction]
 resolveImplicitRegister instruction@(Asm.Instruction com args labels) =
   case com of
-    "pushq" -> [Asm.Instruction "subq" ["$8", "%rsp"] labels,
-                Asm.Instruction "movq" (args ++ ["(%rsp)"]) []]
-    "popq" -> [Asm.Instruction "movq" ("(%rsp)" : args) labels,
-               Asm.Instruction "addq" ["$8", "%rsp"] []]
-    "enter" -> resolveImplicitRegister (Asm.Instruction "pushq" ["%rbp"] []) ++
-               [Asm.Instruction "movq" ["%rsp", "%rbp"] labels]
-    "leave" -> Asm.Instruction "movq" ["%rbp", "%rsp"] labels :
-               resolveImplicitRegister (Asm.Instruction "popq" ["%rbp"] [])
+    "pushl" -> [Asm.Instruction "subl" ["$8", "%esp"] labels,
+                Asm.Instruction "movl" (args ++ ["(%esp)"]) []]
+    "popl" -> [Asm.Instruction "movl" ("(%esp)" : args) labels,
+               Asm.Instruction "addl" ["$8", "%esp"] []]
+    "enter" -> resolveImplicitRegister (Asm.Instruction "pushl" ["%ebp"] []) ++
+               [Asm.Instruction "movl" ["%esp", "%ebp"] labels]
+    "leave" -> Asm.Instruction "movl" ["%ebp", "%esp"] labels :
+               resolveImplicitRegister (Asm.Instruction "popl" ["%ebp"] [])
     _ -> [instruction]
 
 -- | Allocate a different set of registers to a sequence of instructions
@@ -65,20 +65,20 @@ allocateRegisters registers instructions =
 
     criticalRegisterManagement :: [Asm.Instruction]
     criticalRegisterManagement =
-      [Asm.Instruction "movq" ["%rbp", '%' : rbpReplacement] [],
-       Asm.Instruction "movq" ["%rsp", '%' : rspReplacement] []]
+      [Asm.Instruction "movl" ["%ebp", '%' : rbpReplacement] [],
+       Asm.Instruction "movl" ["%esp", '%' : rspReplacement] []]
 
     rbpReplacement = head registers
     rspReplacement = head $ tail registers
 
     registersMap :: [(String, String)]
-    registersMap = (rbpReplacement, "rbp") : (rspReplacement, "rsp") :
+    registersMap = ("ebp", rbpReplacement) : ("esp", rspReplacement) :
                    zip registersUsed (drop 2 registers)
 
     -- | All registers used in the instruction
     -- Does not include `rbp` or `rsp` as these will be handled manually
     registersUsed :: [String]
-    registersUsed = delete "rsp" . delete  "rbp" .  nub . concat $ concatMap
+    registersUsed = delete "esp" . delete "ebp" . nub . concat $ concatMap
                     ((\(r, s) -> [r, s]) . getUsedRegisters)
                     instructions
 
@@ -94,7 +94,7 @@ getUsedRegisters
   :: Asm.Instruction -- ^ The instruction using the registers
   -> ([String], [String]) -- ^ Tuple of (registers read, registers written)
 getUsedRegisters (Asm.Instruction com args _) =
-  if com `elem` ["movq", "subq", "addq", "leaq"]
+  if com `elem` ["movl", "subl", "addl", "leal"]
   then
     let [reads, writes] = args in
     (getRegister reads, getRegister writes)
@@ -107,7 +107,7 @@ getRegister s =
   let registerRegex = mkRegex "%([A-Za-z0-9]+)" in
   case matchRegexAll registerRegex s of
     Just (_, _, rest, [register]) ->
-      if register == "rip"
+      if register == "eip"
       then getRegister rest
       else register : getRegister rest
     Nothing -> []
