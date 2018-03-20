@@ -3,6 +3,7 @@ module AsmTransformer (transform)
 
 import qualified Asm
 import qualified RegisterAllocation
+import Registers (Reg (..))
 
 -- | Transform a list of instructions so it can be used in interleaving
 transform
@@ -13,10 +14,10 @@ transform i =
   let registers = if i == 0 then registers0 else registers1 in
   RegisterAllocation.allocate registers . concatMap resolveImplicitRegister
   where
-    registers0 :: [String]
-    registers0 = ["rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rsp", "rbp"]
-    registers1 :: [String]
-    registers1 = map (("r" ++) . show) [8..15]
+    registers0 :: [Reg]
+    registers0 = map Reg ["ax", "bx", "cx", "dx", "si", "di", "sp", "bp"]
+    registers1 :: [Reg]
+    registers1 = map (Reg . ("r" ++) . show) [8..15]
 
 resolveImplicitRegister :: Asm.Instruction -> [Asm.Instruction]
 resolveImplicitRegister instruction@(Asm.Instruction com args labels) =

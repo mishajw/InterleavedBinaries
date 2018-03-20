@@ -1,14 +1,16 @@
 module RegisterAllocation (allocate)
   where
 
+import Text.Read (readMaybe)
 import Data.List (isPrefixOf, break, nub, delete)
 import Data.Text (replace, pack, unpack)
 import Text.Regex (mkRegex, matchRegexAll)
 import qualified Asm
+import Registers (Reg (..), SizedReg (..), Size (..))
 
 -- | Allocate a set of registers to a series of instructions
 allocate
-  :: [String] -- ^ The registers to allocate across the instructions
+  :: [Reg] -- ^ The registers to allocate across the instructions
   -> [Asm.Instruction] -- ^ The instructions to change the registers for
   -> [Asm.Instruction] -- ^ The instructions with modified registers
 allocate registers instructions =
@@ -24,34 +26,45 @@ allocate registers instructions =
 
     criticalRegisterManagement :: [Asm.Instruction]
     criticalRegisterManagement =
-      [Asm.Instruction "movq" ["%rbp", '%' : rbpReplacement] [],
-       Asm.Instruction "movq" ["%rsp", '%' : rspReplacement] []]
+      [Asm.Instruction
+        "movq" ["%rbp", '%' : show (SizedReg bpReplacement Size64)] [],
+       Asm.Instruction
+        "movq" ["%rsp", '%' : show (SizedReg spReplacement Size64)] []]
 
-    rbpReplacement = head registers
-    rspReplacement = head $ tail registers
+    bpReplacement :: Reg
+    bpReplacement = head registers
+    spReplacement :: Reg
+    spReplacement = head $ tail registers
 
-    registersMap :: [(String, String)]
-    registersMap = (rbpReplacement, "rbp") : (rspReplacement, "rsp") :
+    registersMap :: [(Reg, Reg)]
+    registersMap = (Reg "bp", bpReplacement) : (Reg "sp", spReplacement) :
                    zip registersUsed (drop 2 registers)
 
     -- | All registers used in the instruction
-    -- Does not include `rbp` or `rsp` as these will be handled manually
-    registersUsed :: [String]
-    registersUsed = delete "rsp" . delete  "rbp" .  nub . concat $ concatMap
-                    ((\(r, s) -> [r, s]) . getUsedRegisters)
-                    instructions
+    -- Does not include base or stack pointer registers as these will be handled
+    -- manually
+    registersUsed :: [Reg]
+    registersUsed =
+      delete (Reg "sp") . delete (Reg "bp") . nub . concat $ concatMap
+      ((\(r, s) -> [r, s]) . getUsedRegisters)
+      instructions
 
     -- | Replace mentions of a register in a single argument
     replaceRegisters :: String -> String
     replaceRegisters s =
-      foldr f s registersMap where
+      foldr f s registerStringMap where
       f :: (String, String) -> String -> String
       f (ru, r) s = unpack $ replace (pack ru) (pack r) (pack s)
+      registerStringMap :: [(String, String)]
+      registerStringMap =
+        concatMap (\(ru, r) ->
+          [(show (SizedReg ru Size64), show (SizedReg r Size64)),
+           (show (SizedReg ru Size32), show (SizedReg r Size32))]) registersMap
 
 -- | Get registers used in an instruction
 getUsedRegisters
   :: Asm.Instruction -- ^ The instruction using the registers
-  -> ([String], [String]) -- ^ Tuple of (registers read, registers written)
+  -> ([Reg], [Reg]) -- ^ Tuple of (registers read, registers written)
 getUsedRegisters (Asm.Instruction com args _) =
   if com `elem` ["movq", "subq", "addq", "leaq"]
   then
@@ -61,13 +74,13 @@ getUsedRegisters (Asm.Instruction com args _) =
     ([], [])
 
 -- | Get a list of registers mentioned in a string
-getRegister :: String -> [String]
+getRegister :: String -> [Reg]
 getRegister s =
   let registerRegex = mkRegex "%([A-Za-z0-9]+)" in
   case matchRegexAll registerRegex s of
-    Just (_, _, rest, [register]) ->
-      if register == "rip"
-      then getRegister rest
-      else register : getRegister rest
+    Just (_, _, rest, [rString]) ->
+      case readMaybe rString :: Maybe SizedReg of
+        Just r -> reg r : getRegister rest
+        Nothing -> getRegister rest
     Nothing -> []
 
