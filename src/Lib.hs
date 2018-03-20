@@ -31,9 +31,9 @@ interleavePrograms prog0 prog1 =
 -- | Interleave two .c files
 -- Delagates to @interleavePrograms@
 interleaveCFiles
-  :: FilePath -- | The path of the first .c file
-  -> FilePath -- | The path of the second .c file
-  -> IO Asm.Program -- | The interleaved program
+  :: FilePath -- ^ The path of the first .c file
+  -> FilePath -- ^ The path of the second .c file
+  -> IO Asm.Program -- ^ The interleaved program
 interleaveCFiles path1 path2 =
   -- | Run on @cFileToAsmFile@ both paths and pass to @interleavePrograms@
     interleavePrograms <$> cFileToProgram path1 <*> cFileToProgram path2
