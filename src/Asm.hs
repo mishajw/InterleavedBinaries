@@ -8,7 +8,7 @@ module Asm (
 
 import Data.List.Split (splitOn)
 import Data.List (intercalate, isPrefixOf, isInfixOf, isSuffixOf, elemIndex,
-                  splitAt)
+                  splitAt, break)
 import Control.Monad.Except
 import Data.Text (strip, pack, unpack)
 import Text.Regex (mkRegex, matchRegex)
@@ -17,12 +17,21 @@ data Instruction = Instruction {
   command :: String,
   arguments :: [String],
   labels :: [String]
-}
+} deriving Show
+
+data Func = Func {
+  name :: String,
+  instructions :: [Instruction]
+} deriving Show
+
+newtype ReadOnlyData = ReadOnlyData {
+  readOnlyLines :: [Instruction]
+} deriving Show
 
 data Program = Program {
-  instructions :: [Instruction],
-  readOnlyData :: [Instruction]
-}
+  functions :: [Func],
+  readOnlyData :: [ReadOnlyData]
+} deriving Show
 
 type Result = Either String
 
@@ -42,46 +51,58 @@ insertAtLabel label toInsert ins =
     tail postLabel
 
 -- | Create a program from an ASM string
-stringToProgram :: String -> Result Program
-stringToProgram rawInput = do
-  let input = filterUnneeded .
-              map (unpack . strip . pack) .
-              splitOn "\n" $ rawInput
-  (inputWithoutROData, readOnlyData) <- extractReadOnlyData input
+stringToProgram :: String -> Program
+stringToProgram rawInput =
+  let input = filterUnneeded . map (unpack . strip . pack) $ lines rawInput in
+  let textLine : restInput = input in
+  parseLines restInput where
 
-  return $ Program
-    (stringsToInstructions inputWithoutROData)
-    (stringsToInstructions readOnlyData) where
+    parseLines :: [String] -> Program
+    parseLines [] = Program [] []
+    parseLines (line : input) =
+      case (matchRegex globlRegex line, matchRegex rodRegex line) of
+        (Just [funcName], _) ->
+          let (funcLines, _ : rest) = break (isInfixOf ".size") (tail input) in
+          let func = Func funcName (stringsToInstructions funcLines) in
+          let (Program funcs rods) = parseLines rest in
+          Program (func : funcs) rods
+        (_, Just []) ->
+          let (rodLines, _ : rest) = break (== ".text") input in
+          let rod = ReadOnlyData (stringsToInstructions rodLines) in
+          let (Program funcs rods) = parseLines rest in
+          Program funcs (rod : rods)
+        _ -> error $ "Couldn't match expression: " ++ line
+
+    globlRegex = mkRegex ".globl\t([a-zA-Z0-9_]+)"
+    rodRegex = mkRegex ".section\t.rodata"
 
     -- | Filter out ASM commands that are not needed
     filterUnneeded :: [String] -> [String]
     filterUnneeded lines =
       let conditions = [not . isPrefixOf ".file",
-                        not . isPrefixOf ".size",
                         not . isPrefixOf ".ident",
                         not . isInfixOf ".note.GNU-stack"] in
       foldl (flip filter) lines conditions
 
-    -- | Extract the section of ASM that contains read-only data
-    extractReadOnlyData :: [String] -> Result ([String], [String])
-    extractReadOnlyData lines = do
-      startIndex <- case elemIndex ".section\t.rodata" lines of
-        Just i -> return i
-        Nothing -> Left "Couldn't find beginning of read only data"
-      let (start, rest) = splitAt startIndex lines
-
-      endIndex <- case elemIndex ".text" rest of
-        Just i -> return i
-        Nothing -> Left "Couldn't find end of read only data"
-      let (readOnlyData, end) = splitAt (endIndex + 1) rest
-
-      return (start ++ end, readOnlyData)
-
 -- | Turn a program into ASM string
 programToString :: Program -> String
-programToString (Program instructions readOnly) =
-  intercalate "\n"
-  (instructionsToStrings readOnly ++ instructionsToStrings instructions)
+programToString (Program funcs rods) =
+  let
+    rodLines =
+      concatMap
+        (\(ReadOnlyData ins) ->
+          ".section\t.rodata" : instructionsToStrings ins ++ [".text"])
+        rods in
+  let
+    funcLines =
+      concatMap
+        (\(Func name ins) ->
+          (".globl " ++ name) :
+          (".type " ++ name ++ ", @function") :
+          instructionsToStrings ins ++
+          [".size " ++ name ++ ", .-" ++ name])
+      funcs in
+  unlines $ rodLines ++ funcLines
 
 stringsToInstructions :: [String] -> [Instruction]
 stringsToInstructions = stringsToInstructions' [] where
