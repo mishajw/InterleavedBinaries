@@ -15,8 +15,9 @@ simpleInterleave prog1 prog2 =
   let prog2' = postfixNames "_2" prog2 in
   let (start1, funcs1) = getFunc "_start_1" (Asm.funcs prog1') in
   let (start2, funcs2) = getFunc "_start_2" (Asm.funcs prog2') in
+  let interleavedStart = interleaveFunc start1 start2 in
   Asm.Program {
-    Asm.funcs = interleaveFunc start1 start2 : funcs1 ++ funcs2,
+    Asm.funcs = setName "_start" interleavedStart : funcs1 ++ funcs2,
     Asm.readOnlyData = Asm.readOnlyData prog1' ++ Asm.readOnlyData prog2'
  }
   where
@@ -24,6 +25,16 @@ simpleInterleave prog1 prog2 =
     getFunc funcName fs =
       let ([start], others) = partition (\f -> Asm.name f == funcName) fs in
       (start, others)
+
+    setName :: String -> Asm.Func -> Asm.Func
+    setName name f = f {
+      Asm.name = name,
+      Asm.instructions = headIns {
+        Asm.labels = name : Asm.labels headIns
+      } : tailIns
+    } where
+      headIns = head $ Asm.instructions f
+      tailIns = tail $ Asm.instructions f
 
     interleaveFunc :: Asm.Func -> Asm.Func -> Asm.Func
     interleaveFunc f1 f2 =
