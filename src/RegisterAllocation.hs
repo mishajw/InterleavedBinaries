@@ -3,7 +3,7 @@ module RegisterAllocation (
     simpleAllocate)
   where
 
-import Text.Regex (mkRegex, matchRegex)
+import Text.Regex (mkRegex, matchRegex, matchRegexAll)
 import Data.Maybe (mapMaybe, isNothing)
 import Data.List (delete, isInfixOf, nub)
 import Data.Text (replace, pack, unpack, Text)
@@ -60,31 +60,61 @@ simpleAllocate regs prog =
 allocate
   :: [Reg] -- ^ The registers to allocate across the instructions
   -> ([Reg] -> (Reg, [Reg])) -- ^ Function for getting the next register to use
-  -> [Asm.Instruction] -- ^ The instructions to change the registers for
-  -> [Asm.Instruction] -- ^ The instructions with modified registers
-allocate regs regFunc instructions =
-  -- 1) Select registers for base/stack pointers
-  let ([bpReplacement, spReplacement], regs) = takeNRegisters 2 regs regFunc in
-  -- 2) Allocate the scoped registers to new registers
-  let allocatedScopes = allocateScopes regs regFunc initialScopes in
-  -- 3) Bind the allocated scopes
-  let binded = foldr bindScope instructions allocatedScopes in
-  -- 4) Insert the critical instructions at the beginning of the main function
-  handleCriticalRegisters bpReplacement spReplacement binded
+  -> Asm.Program -- ^ The program to change the registers for
+  -> Asm.Program -- ^ The program with modified registers
+allocate regs regFunc program =
+  -- Bind the register values
+  let bindedProgram = program {
+    Asm.funcs = zipWith bindFunction (Asm.funcs program) functionScopes
+  } in
+  -- Handle the base/stack pointer replacements
+  insertCriticalRegisterManagement bpReplacement spReplacement bindedProgram
   where
-    -- The initial register scopes in the program
-    initialScopes :: [RegScope]
-    initialScopes =
-      filter
-      (\(RegScope _ _ r _) -> r `notElem` [read "bp", read "sp"])
-      (getScopes instructions)
 
-    -- Bind all register references within a scope
-    bindScope :: RegScope -> [Asm.Instruction] -> [Asm.Instruction]
-    bindScope rs@(RegScope start end from (Just to)) ins =
-      let (beginning, rest) = splitAt start ins in
-      let (middle, ending) = splitAt (end - start + 1) rest in
-      beginning ++ replaceRegs from to middle ++ ending
+    -- | Set replacement registers for base/stack pointers
+    bpReplacement :: Reg
+    spReplacement :: Reg
+    usableRegs :: [Reg]
+    ([bpReplacement, spReplacement], usableRegs) =
+      takeNRegisters 2 regs regFunc
+
+    -- | The initial register scopes in the program
+    functionScopes :: [[RegScope]]
+    functionScopes = do
+      func <- Asm.funcs program
+      let instructions = Asm.instructions func
+      return $ filter
+        -- Filter scopes for base/stack pointer as we're handling this
+        -- separately
+        (\(RegScope _ _ r _) -> r `notElem` [read "bp", read "sp"])
+        (getScopes instructions)
+
+    -- | Allocate the scopes for each function
+    allocatedScopes :: [[RegScope]]
+    allocatedScopes = map (allocateScopes usableRegs regFunc) functionScopes
+
+    -- | Bind all scoped variable in some function
+    bindFunction :: Asm.Func -> [RegScope] -> Asm.Func
+    bindFunction func scopes = func { Asm.instructions =
+      newInstructions (Asm.instructions func)
+    } where
+      newInstructions :: [Asm.Instruction] -> [Asm.Instruction]
+      newInstructions instructions =
+        let indexedIns = zip [0..] instructions in
+        map
+          (\(i, ins) ->
+            ins { Asm.arguments =
+                    replaceRegs (getRegMap i) (Asm.arguments ins) } )
+          indexedIns
+
+      getRegMap :: Int -> [(Reg, Reg)]
+      getRegMap i =
+        -- Append the base/stack pointer replacements
+        (read "bp", bpReplacement) : (read "sp", spReplacement) :
+        -- Map the scopes to their register replacements
+        map (\(RegScope _ _ from (Just to)) -> (from, to))
+        -- Filter for scopes that are applicable at this index
+        (filter (\(RegScope s e _ _) -> s <= i && i <= e) scopes)
 
 -- | Allocate register scopes within a series of instructions
 allocateScopes
@@ -125,37 +155,30 @@ allocateScopes regs regFunc = allocateScopes' where
                             overlappingScopes in
       -- ...and use this to select which registers are available...
       let availableRegs = filter (`notElem` overlappingRegs) regs in
+      -- ...and only select registers that have the same volatility as the
+      -- source register...
+      let
+        sameVolatility =
+          filter
+            (\reg' -> (reg' `elem` volatileRegisters &&
+                       reg `elem` volatileRegisters) ||
+                      (reg' `elem` nonvolatileRegisters &&
+                       reg `elem` nonvolatileRegisters))
+            availableRegs in
       -- ...so we can select a register for this scope
-      let (chosenReg, _) = regFunc availableRegs in
-      RegScope start end reg (Just chosenReg)
+      case sameVolatility of
+        [] -> error "Could not find suitable register for scope"
+        _ ->
+          let (chosenReg, _) = regFunc availableRegs in
+          RegScope start end reg (Just chosenReg)
 
--- Perform critical register management by:
--- 1) Replacing the stack/base pointer with other registers
--- 2) Assigning original stack/base pointers to their replacements
-handleCriticalRegisters
-  :: Reg -- ^ The register to use for the base pointer
-  -> Reg -- ^ The register to use for the stack pointer
-  -> [Asm.Instruction] -- ^ The instructions to modify
-  -> [Asm.Instruction] -- ^ The modified instructions
-handleCriticalRegisters bpReplacement spReplacement instructions =
-    Asm.insertAtLabel "main" criticalRegisterManagement replacedInstructions
-  where
-    -- The instructions where the critical registers have been replaced
-    replacedInstructions :: [Asm.Instruction]
-    replacedInstructions =
-      replaceRegs (read "sp") spReplacement .
-      replaceRegs (read "bp") bpReplacement $ instructions
+    volatileRegisters :: [Reg]
+    volatileRegisters = map read $ words "ax cx dx r8 r9 r10 r11"
+    nonvolatileRegisters :: [Reg]
+    nonvolatileRegisters = map read $ words "bx bp sp di si r12 r13 r14 r15"
 
-    -- | The instructions which handle the critical registers - in this case,
-    -- assign the stack/base pointer replacements to start with the correct
-    -- values
-    criticalRegisterManagement :: [Asm.Instruction]
-    criticalRegisterManagement =
-      [Asm.Instruction
-        "movq" ["%rbp", '%' : show (SizedReg bpReplacement Size64)] [],
-       Asm.Instruction
-        "movq" ["%rsp", '%' : show (SizedReg spReplacement Size64)] []]
-
+-- | Handle critical register management by putting base/stack pointers into the
+-- correct replacement registers
 insertCriticalRegisterManagement :: Reg -> Reg -> Asm.Program -> Asm.Program
 insertCriticalRegisterManagement bp sp =
   Asm.insertInFunction "_start" criticalRegisterManagement
@@ -170,29 +193,28 @@ insertCriticalRegisterManagement bp sp =
 -- | Take N registers from the pool given some register function
 takeNRegisters :: Int -> [Reg] -> ([Reg] -> (Reg, [Reg])) -> ([Reg], [Reg])
 takeNRegisters n regs regFunc =
-  foldr f ([], regs) [0..n] where
+  foldr f ([], regs) [1..n] where
   f _ (selected, rest) =
     let (curSelected, curRest) = regFunc rest in
     (curSelected : selected, curRest)
 
--- Replace all mentions of a register with another register in some
--- instructions
-replaceRegs :: Reg -> Reg -> [Asm.Instruction] -> [Asm.Instruction]
-replaceRegs from to = map f where
-  f i = i {
-    -- Map all arguments to replace the registers
-    Asm.arguments =
-      map
-      (unpack .
-        -- Replace all 64 bit register mentions
-        replace
-          (pack . show $ SizedReg from Size64)
-          (pack . show $ SizedReg to Size64) .
-        -- Replace all 32 bit register mentions
-        replace
-          (pack . show $ SizedReg from Size32)
-          (pack . show $ SizedReg to Size32) .
-        pack)
-      (Asm.arguments i)
-  }
+-- | Replace all mentions of some registers with different registers
+replaceRegs
+  :: [(Reg, Reg)] -- ^ A map of registers to the registers to replace with
+  -> [String] -- The strings to replace the registers in
+  -> [String] -- Return the strings with replacements
+replaceRegs regMap = map replaceSingle where
+  replaceSingle :: String -> String
+  replaceSingle s =
+    let regRegex = mkRegex "%([A-Za-z0-9]+)" in
+    case matchRegexAll regRegex s of
+      Just (before, _, after, [regName]) ->
+        before ++ "%" ++ replaceRegName regMap regName ++ replaceSingle after
+      Nothing -> s
+
+  replaceRegName :: [(Reg, Reg)] -> String -> String
+  replaceRegName ((r1, r2) : rest) s
+    | s == show (SizedReg r1 Size64) = show (SizedReg r2 Size64)
+    | s == show (SizedReg r1 Size32) = show (SizedReg r2 Size32)
+    | otherwise = s
 

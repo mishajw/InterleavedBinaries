@@ -12,13 +12,15 @@ transform
   -> Asm.Program -- ^ The transformed program
 transform i prog =
   let explicitProg = resolveImplicitRegisters prog in
-  let registers = if i == 0 then registers0 else registers1 in
-  RegisterAllocation.simpleAllocate registers explicitProg
+  let regs = if i == 0 then regs0 else regs1 in
+  RegisterAllocation.allocate regs regFunc explicitProg
   where
-    registers0 :: [Reg]
-    registers0 = map Reg ["ax", "bx", "cx", "dx", "si", "di", "sp", "bp"]
-    registers1 :: [Reg]
-    registers1 = map (Reg . ("r" ++) . show) [8..15]
+    regs0 :: [Reg]
+    regs0 = map Reg ["ax", "bx", "cx", "dx", "si", "di", "sp", "bp"]
+    regs1 :: [Reg]
+    regs1 = map (Reg . ("r" ++) . show) [8..15]
+    regFunc :: [Reg] -> (Reg, [Reg])
+    regFunc regs = (head regs, tail regs)
 
 resolveImplicitRegisters :: Asm.Program -> Asm.Program
 resolveImplicitRegisters prog = prog {
