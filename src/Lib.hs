@@ -8,7 +8,7 @@ module Lib (
   where
 
 import AsmTransformer (transform)
-import InstructionInterleave (interleave)
+import ProgramInterleave (simpleInterleave)
 import System.FilePath.Posix ((</>), (<.>), dropExtension, takeFileName)
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (readProcessWithExitCode)
@@ -23,7 +23,7 @@ interleavePrograms
 interleavePrograms prog0 prog1 =
   let prog0Trans = transform 0 prog0 in
   let prog1Trans = transform 1 prog1 in
-  prog1Trans
+  simpleInterleave prog0Trans prog1Trans
 
 -- | Interleave two .c files
 -- Delagates to @interleavePrograms@
