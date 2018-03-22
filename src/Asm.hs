@@ -1,9 +1,13 @@
 module Asm (
     Instruction (..),
+    Func (..),
+    ReadOnlyData (..),
     Program (..),
     insertAtLabel,
+    insertInFunction,
     stringToProgram,
-    programToString)
+    programToString,
+    mapArgs)
   where
 
 import Data.List.Split (splitOn)
@@ -29,7 +33,7 @@ newtype ReadOnlyData = ReadOnlyData {
 } deriving Show
 
 data Program = Program {
-  functions :: [Func],
+  funcs :: [Func],
   readOnlyData :: [ReadOnlyData]
 } deriving Show
 
@@ -49,6 +53,17 @@ insertAtLabel label toInsert ins =
     toInsertLabeled ++
     [(head postLabel) {Asm.labels = []}] ++
     tail postLabel
+
+insertInFunction :: String -> [Asm.Instruction] -> Program -> Program
+insertInFunction funcName ins prog = prog {
+  funcs = map f (funcs prog)
+} where
+  f func =
+    if name func == funcName
+    then
+      func {instructions = insertAtLabel funcName ins (instructions func)}
+    else
+      func
 
 -- | Create a program from an ASM string
 stringToProgram :: String -> Program
@@ -103,6 +118,15 @@ programToString (Program funcs rods) =
           [".size " ++ name ++ ", .-" ++ name])
       funcs in
   unlines $ rodLines ++ funcLines
+
+mapArgs :: (String -> String) -> Asm.Program -> Asm.Program
+mapArgs f prog = prog {
+    funcs = map (\func -> func {
+      instructions = map (\ins -> ins {
+        arguments = map f (arguments ins)
+      }) (instructions func)
+    }) (funcs prog)
+  }
 
 stringsToInstructions :: [String] -> [Instruction]
 stringsToInstructions = stringsToInstructions' [] where

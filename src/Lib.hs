@@ -21,12 +21,9 @@ interleavePrograms
   -> Asm.Program -- ^ The second program to interleave
   -> Asm.Program -- ^ The interleaved program
 interleavePrograms prog0 prog1 =
-  let prog0Ins = transform 0 (Asm.instructions prog0) in
-  let prog1Ins = transform 1 (Asm.instructions prog1) in
-  prog0 {
-    Asm.instructions = interleave prog0Ins prog1Ins
-    -- Asm.readOnlyData = (Asm.readOnlyData)
-  }
+  let prog0Trans = transform 0 prog0 in
+  let prog1Trans = transform 1 prog1 in
+  prog1Trans
 
 -- | Interleave two .c files
 -- Delagates to @interleavePrograms@

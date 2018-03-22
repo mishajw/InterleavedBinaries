@@ -1,12 +1,60 @@
-module RegisterAllocation (allocate)
+module RegisterAllocation (
+    allocate,
+    simpleAllocate)
   where
 
+import Text.Regex (mkRegex, matchRegex)
 import Data.Maybe (mapMaybe, isNothing)
-import Data.List (delete)
-import Data.Text (replace, pack, unpack)
+import Data.List (delete, isInfixOf, nub)
+import Data.Text (replace, pack, unpack, Text)
 import qualified Asm
 import Registers (Reg (..), SizedReg (..), Size (..))
 import RegisterScope (RegScope (..), getScopes)
+
+simpleAllocate
+  :: [Reg] -- ^ List of registers we can use
+  -> Asm.Program -- ^ Program to allocate registers to
+  -> Asm.Program -- ^ Return program with changed registers
+simpleAllocate regs prog =
+    let [(_, bpReg)] = filter (\(r, _) -> r == read "bp") regMapping in
+    let [(_, spReg)] = filter (\(r, _) -> r == read "sp") regMapping in
+    insertCriticalRegisterManagement bpReg spReg .
+    Asm.mapArgs replaceRegs $ prog where
+
+    replaceRegs :: String -> String
+    replaceRegs = replaceRegs' regStringMapping where
+      replaceRegs' :: [(String, String)] -> String -> String
+      replaceRegs' [] s = s
+      replaceRegs' ((s1, s2) : rest) s
+        | s1 `isInfixOf` s = unpack . replace (pack s1) (pack s2) . pack $ s
+        | otherwise = replaceRegs' rest s
+
+    regStringMapping :: [(String, String)]
+    regStringMapping =
+      concatMap
+        (\(r1, r2) -> [
+          (show $ SizedReg r1 Size64,
+           show $ SizedReg r2 Size64),
+          (show $ SizedReg r1 Size32,
+           show $ SizedReg r2 Size32)])
+        regMapping
+
+    regMapping :: [(Reg, Reg)]
+    regMapping = zip (nub allRegisters) regs
+
+    allRegisters :: [Reg]
+    allRegisters = do
+      arg <- allArgs
+      let regRegex = mkRegex "%([a-z0-9A-Z]+)"
+      case matchRegex regRegex arg of
+        Just [r] -> [reg (read r :: SizedReg)]
+        Nothing -> []
+
+    allArgs :: [String]
+    allArgs = do
+      func <- Asm.funcs prog
+      instruction <- Asm.instructions func
+      Asm.arguments instruction
 
 -- | Allocate a set of registers to a series of instructions
 allocate
@@ -107,6 +155,17 @@ handleCriticalRegisters bpReplacement spReplacement instructions =
         "movq" ["%rbp", '%' : show (SizedReg bpReplacement Size64)] [],
        Asm.Instruction
         "movq" ["%rsp", '%' : show (SizedReg spReplacement Size64)] []]
+
+insertCriticalRegisterManagement :: Reg -> Reg -> Asm.Program -> Asm.Program
+insertCriticalRegisterManagement bp sp =
+  Asm.insertInFunction "_start" criticalRegisterManagement
+  where
+    criticalRegisterManagement :: [Asm.Instruction]
+    criticalRegisterManagement =
+      [Asm.Instruction
+        "movq" ["%rbp", '%' : show (SizedReg bp Size64)] [],
+       Asm.Instruction
+        "movq" ["%rsp", '%' : show (SizedReg sp Size64)] []]
 
 -- | Take N registers from the pool given some register function
 takeNRegisters :: Int -> [Reg] -> ([Reg] -> (Reg, [Reg])) -> ([Reg], [Reg])
