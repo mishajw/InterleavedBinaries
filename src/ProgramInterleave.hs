@@ -3,9 +3,9 @@ module ProgramInterleave (
   simpleInterleave)
   where
 
-import Text.Regex (mkRegex, matchRegexAll)
 import Data.List (union, partition)
 import qualified Asm
+import NameResolver (postfixNames)
 
 simpleInterleave :: Asm.Program -> Asm.Program -> Asm.Program
 simpleInterleave prog1 prog2 =
@@ -35,7 +35,6 @@ simpleInterleave prog1 prog2 =
             (Asm.instructions f1) (Asm.instructions f2)
       }
 
-
 interleave :: [Asm.Instruction] -> [Asm.Instruction] -> [Asm.Instruction]
 interleave a b =
   let aMain = extractMain a in
@@ -54,40 +53,4 @@ combineInstructions
 combineInstructions a b =
   [a { Asm.labels = Asm.labels a `union` Asm.labels b },
    b { Asm.labels = [] }]
-
-postfixNames :: String -> Asm.Program -> Asm.Program
-postfixNames postfix prog = prog {
-  Asm.funcs = map postfixFunction (Asm.funcs prog),
-  Asm.readOnlyData = map postfixRod (Asm.readOnlyData prog)
-} where
-  postfixFunction :: Asm.Func -> Asm.Func
-  postfixFunction f = f {
-    Asm.name = Asm.name f ++ postfix,
-    Asm.instructions = map
-                       (postfixLabels . postfixCalls . postfixRodAccess)
-                       (Asm.instructions f)
-  }
-  postfixRod :: Asm.ReadOnlyData -> Asm.ReadOnlyData
-  postfixRod rod = rod {
-    Asm.readOnlyLines = map postfixLabels (Asm.readOnlyLines rod)
-  }
-  postfixLabels :: Asm.Instruction -> Asm.Instruction
-  postfixLabels i = i {
-    Asm.labels = map (++ postfix) (Asm.labels i)
-  }
-  postfixCalls :: Asm.Instruction -> Asm.Instruction
-  postfixCalls i
-    | Asm.command i == "call" =
-      i {Asm.arguments = map (++ postfix) (Asm.arguments i)}
-    | otherwise = i
-  postfixRodAccess :: Asm.Instruction -> Asm.Instruction
-  postfixRodAccess i = i {
-    Asm.arguments = map f (Asm.arguments i)
-  } where
-    f arg =
-      let lcRegex = mkRegex "LC[0-9]+" in
-      case matchRegexAll lcRegex arg of
-        Just (before, matched, after, []) ->
-          before ++ matched ++ postfix ++ f after
-        Nothing -> arg
 
