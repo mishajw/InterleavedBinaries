@@ -1,9 +1,10 @@
 module AsmTransformer (transform)
   where
 
+import Data.List (sort, sortBy)
 import qualified Asm
 import qualified RegisterAllocation
-import Registers (Reg (..))
+import Registers (Reg (..), allRegisters)
 
 -- | Transform a list of instructions so it can be used in interleaving
 transform
@@ -12,15 +13,13 @@ transform
   -> Asm.Program -- ^ The transformed program
 transform i prog =
   let explicitProg = resolveImplicitRegisters prog in
-  let regs = if i == 0 then regs0 else regs1 in
-  RegisterAllocation.allocate regs regFunc explicitProg
+  let regFunc = if i == 0
+                then regFunc' sort
+                else regFunc' (sortBy (flip compare)) in
+  RegisterAllocation.allocate allRegisters regFunc explicitProg
   where
-    regs0 :: [Reg]
-    regs0 = map Reg ["ax", "bx", "cx", "dx", "si", "di", "sp", "bp"]
-    regs1 :: [Reg]
-    regs1 = map (Reg . ("r" ++) . show) [8..15]
-    regFunc :: [Reg] -> (Reg, [Reg])
-    regFunc regs = (head regs, tail regs)
+    regFunc' :: ([Reg] -> [Reg]) -> [Reg] -> (Reg, [Reg])
+    regFunc' f regs = let fRegs = f regs in (head fRegs, tail fRegs)
 
 resolveImplicitRegisters :: Asm.Program -> Asm.Program
 resolveImplicitRegisters prog = prog {
