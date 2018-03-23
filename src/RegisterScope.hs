@@ -1,5 +1,6 @@
 module RegisterScope (
     RegScope (..),
+    RegChangable (..),
     getScopes)
   where
 
@@ -9,28 +10,44 @@ import Data.Maybe (mapMaybe)
 import Registers (Reg, SizedReg (..))
 import qualified Asm
 
--- | Represents a register being used, and whether it must use the same value
-data RegUseType = RegRead | RegWrite deriving Eq
+-- Whether a register was read from or written to
+data RegUseType = RegRead | RegWrite deriving (Eq, Show)
+
+-- | Flag for whether we can change a register
+data RegChangable =
+  -- The register can be changed to anything as long as it is consistent within
+  -- the scope
+  RegFlexible |
+  -- The register must be mapped to the same value across the whole program. As
+  -- long as another scope is flagged as this, the registers must be mapped to
+  -- the same value. Used for passing parameters to functions
+  RegLocalFixed |
+  -- The register must stay as this value regardless. Used for syscalls
+  RegGlobalFixed deriving (Eq, Ord, Show)
+
+-- The usage of a register
 data UsedReg =
   UsedReg
     Reg -- The register used
     RegUseType -- The way the register is used
-    (Maybe Reg) -- What the register should be set to
-    deriving Eq
+    RegChangable -- How we are allowed to change the register used
+    deriving (Show, Eq)
 
 -- | Represents the scope of register usage
 data RegScope = RegScope {
   startIndex :: Int,
   endIndex :: Int,
   register :: Reg,
+  changable :: RegChangable,
   allocatedReg :: Maybe Reg
-} deriving Eq
+} deriving (Eq, Show)
 
 getScopes :: [Asm.Instruction] -> [RegScope]
 getScopes instructions =
   let indexedIns = zip [0..] instructions in
   let
     indexedUsedRegs =
+      map (\r -> (0, r)) functionBeginRegs ++
       concatMap (\(i, ins) -> map (\r -> (i, r)) (getUsedRegisters ins))
                 indexedIns in
     create indexedUsedRegs where
@@ -45,38 +62,38 @@ getScopes instructions =
           Nothing -> create rest
 
     removeReferences :: RegScope -> [(Int, UsedReg)] -> [(Int, UsedReg)]
-    removeReferences (RegScope start end reg _) =
+    removeReferences (RegScope start end reg _ _) =
       filter
       (\(i, UsedReg reg' _ _) -> not $ start <= i && i <= end && reg == reg')
 
 getRegScope :: UsedReg -> [(Int, UsedReg)] -> Maybe RegScope
 getRegScope ur@(UsedReg reg _ _) usedRegs =
-  case getUntilLastRead $ getUntilNextWrite usedRegs of
+  let relevantUsedRegs = filter (\(_, UsedReg reg' _ _) -> reg == reg')
+                                usedRegs in
+  case getUntilLastRead $ getUntilNextWrite relevantUsedRegs of
     [] -> Nothing
     usedRegsRange ->
       let (firstIndex, _) = head usedRegsRange in
       let (lastIndex, _) = last usedRegsRange in
-      return $ RegScope firstIndex lastIndex reg (getAllocatedReg usedRegsRange)
+      let changable = getChangable usedRegsRange in
+      return $ RegScope firstIndex lastIndex reg changable Nothing
   where
     getUntilNextWrite :: [(Int, UsedReg)] -> [(Int, UsedReg)]
     getUntilNextWrite usedRegs' =
       head usedRegs' :
       takeWhile (\(_, UsedReg reg' useType _) ->
-                   reg /= reg' || useType /= RegWrite) (tail usedRegs')
+                   useType /= RegWrite) (tail usedRegs')
     getUntilLastRead :: [(Int, UsedReg)] -> [(Int, UsedReg)]
     getUntilLastRead usedRegs' =
       reverse $ dropWhile
                 (\(i, UsedReg reg' useType _) ->
-                  reg /= reg' || useType /= RegRead)
+                  useType /= RegRead)
                 (reverse usedRegs')
-    getAllocatedReg :: [(Int, UsedReg)] -> Maybe Reg
-    getAllocatedReg usedRegs' =
-      let relevantUsedRegs = filter
-                             (\(_, UsedReg reg' _ _) -> reg == reg')
-                             usedRegs' in
-      case mapMaybe (\(_, UsedReg _ _ reg') -> reg') relevantUsedRegs of
-        [] -> Nothing
-        allocatedReg : _ -> Just allocatedReg
+    getChangable :: [(Int, UsedReg)] -> RegChangable
+    getChangable =
+      -- We rely on the ordering of @RegChangable@ to get the most prevalent
+      -- mode of chanablility
+      maximum . map (\(_, UsedReg _ _ changable) -> changable)
 
 -- | Get registers used in an instruction
 getUsedRegisters
@@ -88,15 +105,23 @@ getUsedRegisters (Asm.Instruction com args _)
     getRegsInString RegRead reads ++ getRegsInString RegWrite writes
   | com `elem` ["subq", "addq"] =
     concatMap (getRegsInString RegRead) args
-  | com `elem` ["call", "syscall"] = functionUsedRegs
+  | com == "call" = functionUsedRegs RegLocalFixed
+  | com == "syscall" = functionUsedRegs RegGlobalFixed
   | otherwise = []
 
--- | The registers a function call can read from
-functionUsedRegs :: [UsedReg]
-functionUsedRegs =
-  UsedReg (read "ax") RegWrite (Just $ read "ax") :
+-- | The registers a function call can read from. Takes the changability of the
+-- registers
+functionUsedRegs :: RegChangable -> [UsedReg]
+functionUsedRegs changable =
+  UsedReg (read "ax") RegWrite changable :
   map
-  (\s -> UsedReg (read s) RegRead (Just $ read s))
+  (\s -> UsedReg (read s) RegRead changable)
+  ["si", "di", "dx", "cx", "r8", "r9"]
+
+functionBeginRegs :: [UsedReg]
+functionBeginRegs =
+  map
+  (\s -> UsedReg (read s) RegWrite RegLocalFixed)
   ["si", "di", "dx", "cx", "r8", "r9"]
 
 -- | Get a list of registers mentioned in a string
@@ -108,12 +133,12 @@ getRegsInString defaultUseType s =
   case (matchRegexAll registerDerefRegex s, matchRegexAll registerRegex s) of
     (Just (_, _, rest, [rString]), _) ->
       case readMaybe rString :: Maybe SizedReg of
-        Just r -> UsedReg (reg r) RegRead Nothing :
+        Just r -> UsedReg (reg r) RegRead RegFlexible :
                   getRegsInString defaultUseType rest
         Nothing -> getRegsInString defaultUseType rest
     (_, Just (_, _, rest, [rString])) ->
       case readMaybe rString :: Maybe SizedReg of
-        Just r -> UsedReg (reg r) defaultUseType Nothing :
+        Just r -> UsedReg (reg r) defaultUseType RegFlexible :
                   getRegsInString defaultUseType rest
         Nothing -> getRegsInString defaultUseType rest
     _ -> []
