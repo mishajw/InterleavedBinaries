@@ -1,6 +1,5 @@
 module RegisterAllocation (
-    allocate,
-    simpleAllocate)
+    allocate)
   where
 
 import Text.Regex (mkRegex, matchRegex, matchRegexAll)
@@ -10,51 +9,6 @@ import Data.Text (replace, pack, unpack, Text)
 import qualified Asm
 import Registers (Reg (..), SizedReg (..), Size (..))
 import RegisterScope (RegScope (..), RegChangable (..), getScopes)
-
-simpleAllocate
-  :: [Reg] -- ^ List of registers we can use
-  -> Asm.Program -- ^ Program to allocate registers to
-  -> Asm.Program -- ^ Return program with changed registers
-simpleAllocate regs prog =
-    let [(_, bpReg)] = filter (\(r, _) -> r == read "bp") regMapping in
-    let [(_, spReg)] = filter (\(r, _) -> r == read "sp") regMapping in
-    insertCriticalRegisterManagement bpReg spReg .
-    Asm.mapArgs replaceRegs $ prog where
-
-    replaceRegs :: String -> String
-    replaceRegs = replaceRegs' regStringMapping where
-      replaceRegs' :: [(String, String)] -> String -> String
-      replaceRegs' [] s = s
-      replaceRegs' ((s1, s2) : rest) s
-        | s1 `isInfixOf` s = unpack . replace (pack s1) (pack s2) . pack $ s
-        | otherwise = replaceRegs' rest s
-
-    regStringMapping :: [(String, String)]
-    regStringMapping =
-      concatMap
-        (\(r1, r2) -> [
-          (show $ SizedReg r1 Size64,
-           show $ SizedReg r2 Size64),
-          (show $ SizedReg r1 Size32,
-           show $ SizedReg r2 Size32)])
-        regMapping
-
-    regMapping :: [(Reg, Reg)]
-    regMapping = zip (nub allRegisters) regs
-
-    allRegisters :: [Reg]
-    allRegisters = do
-      arg <- allArgs
-      let regRegex = mkRegex "%([a-z0-9A-Z]+)"
-      case matchRegex regRegex arg of
-        Just [r] -> [reg (read r :: SizedReg)]
-        Nothing -> []
-
-    allArgs :: [String]
-    allArgs = do
-      func <- Asm.funcs prog
-      instruction <- Asm.instructions func
-      Asm.arguments instruction
 
 -- | Allocate a set of registers to a series of instructions
 allocate
