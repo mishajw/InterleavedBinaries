@@ -3,8 +3,8 @@ module RegisterAllocation (
   where
 
 import Text.Regex (mkRegex, matchRegex, matchRegexAll)
-import Data.Maybe (mapMaybe, isNothing)
-import Data.List (delete, isInfixOf, nub)
+import Data.Maybe (mapMaybe, isNothing, fromMaybe)
+import Data.List (delete, isInfixOf, nub, find)
 import Data.Text (replace, pack, unpack, Text)
 import qualified Asm
 import Registers (Reg (..), SizedReg (..), Size (..))
@@ -24,13 +24,17 @@ allocate regs regFunc program =
   -- Handle the base/stack pointer replacements
   insertCriticalRegisterManagement bpReplacement spReplacement bindedProgram
   where
-
     -- | Set replacement registers for base/stack pointers
     bpReplacement :: Reg
     spReplacement :: Reg
-    usableRegs :: [Reg]
-    ([bpReplacement, spReplacement], usableRegs) =
-      takeNRegisters 2 regs regFunc
+    (bpReplacement, spReplacement) =
+      (fromMaybe (error "Couldn't find BP replacement") (getReg (read "bp")),
+       fromMaybe (error "Couldn't find SP replacement") (getReg (read "sp")))
+      where
+      getReg :: Reg -> Maybe Reg
+      getReg reg = do
+        scope <- find (\rs -> register rs == reg) (concat allocatedScopes)
+        allocatedReg scope
 
     -- | The initial register scopes in the program
     functionScopes :: [[RegScope]]
@@ -42,8 +46,8 @@ allocate regs regFunc program =
     -- | Allocate the scopes for each function
     allocatedScopes :: [[RegScope]]
     allocatedScopes =
-      map (allocateFlexibleScopes usableRegs regFunc) $
-      allocateLocalFixedScopes usableRegs regFunc $
+      map (allocateFlexibleScopes regs regFunc) $
+      allocateLocalFixedScopes regs regFunc $
       allocateGlobalFixedScopes functionScopes
 
     -- | Bind all scoped variable in some function

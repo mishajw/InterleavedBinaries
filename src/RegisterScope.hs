@@ -108,7 +108,7 @@ getRegScope ur@(UsedReg reg _ _) usedRegs =
     getChangable :: [(Int, UsedReg)] -> RegChangable
     getChangable =
       -- We rely on the ordering of @RegChangable@ to get the most prevalent
-      -- mode of chanablility
+      -- mode of changablility
       maximum . map (\(_, UsedReg _ _ changable) -> changable)
 
 -- | Get registers used in an instruction
