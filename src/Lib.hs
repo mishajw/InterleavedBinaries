@@ -9,6 +9,7 @@ module Lib (
 
 import AsmTransformer (transform)
 import ProgramInterleave (simpleInterleave)
+import StackReverse (reverseStack)
 import System.FilePath.Posix ((</>), (<.>), dropExtension, takeFileName)
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (readProcessWithExitCode)
@@ -21,8 +22,9 @@ interleavePrograms
   -> Asm.Program -- ^ The second program to interleave
   -> Asm.Program -- ^ The interleaved program
 interleavePrograms prog0 prog1 =
+  let prog1Rev = reverseStack prog1 in
   let prog0Trans = transform 0 prog0 in
-  let prog1Trans = transform 1 prog1 in
+  let prog1Trans = transform 1 prog1Rev in
   simpleInterleave prog0Trans prog1Trans
 
 -- | Interleave two .c files
