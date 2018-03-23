@@ -65,7 +65,7 @@ allocate
 allocate regs regFunc program =
   -- Bind the register values
   let bindedProgram = program {
-    Asm.funcs = zipWith bindFunction (Asm.funcs program) functionScopes
+    Asm.funcs = zipWith bindFunction (Asm.funcs program) allocatedScopes
   } in
   -- Handle the base/stack pointer replacements
   insertCriticalRegisterManagement bpReplacement spReplacement bindedProgram
@@ -213,8 +213,9 @@ replaceRegs regMap = map replaceSingle where
       Nothing -> s
 
   replaceRegName :: [(Reg, Reg)] -> String -> String
+  replaceRegName [] s = s
   replaceRegName ((r1, r2) : rest) s
     | s == show (SizedReg r1 Size64) = show (SizedReg r2 Size64)
     | s == show (SizedReg r1 Size32) = show (SizedReg r2 Size32)
-    | otherwise = s
+    | otherwise = replaceRegName rest s
 

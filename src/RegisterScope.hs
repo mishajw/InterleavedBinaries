@@ -88,7 +88,7 @@ getUsedRegisters (Asm.Instruction com args _)
     getRegsInString RegRead reads ++ getRegsInString RegWrite writes
   | com `elem` ["subq", "addq"] =
     concatMap (getRegsInString RegRead) args
-  | com == "call" = functionUsedRegs
+  | com `elem` ["call", "syscall"] = functionUsedRegs
   | otherwise = []
 
 -- | The registers a function call can read from
