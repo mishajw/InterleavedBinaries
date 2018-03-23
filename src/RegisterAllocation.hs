@@ -153,7 +153,9 @@ possibleRegsForScope
     overlappingScopes =
       filter (\(RegScope s e _ _ _) ->
                (start <= s && s <= end) ||
-               (start <= e && e <= end))
+               (start <= e && e <= end) ||
+               (s <= start && start <= e) ||
+               (s <= end && end <= e))
              otherScopes in
   let overlappingRegs = mapMaybe
                         (\(RegScope _ _ _ _ r) -> r)
