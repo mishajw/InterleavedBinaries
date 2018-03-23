@@ -44,13 +44,23 @@ data RegScope = RegScope {
 
 getScopes :: [Asm.Instruction] -> [RegScope]
 getScopes instructions =
+  -- Index all the instructions
   let indexedIns = zip [0..] instructions in
+  -- Get where each register is used
   let
     indexedUsedRegs =
       map (\r -> (0, r)) functionBeginRegs ++
       concatMap (\(i, ins) -> map (\r -> (i, r)) (getUsedRegisters ins))
                 indexedIns in
-    create indexedUsedRegs where
+  -- Get all scopes
+  let allScopes = create indexedUsedRegs in
+  -- Remove base/stack pointer scopes because we handle them separately
+  let
+    filteredScopes = filter
+      (\(RegScope _ _ r _ _) -> r `notElem` [read "bp", read "sp"])
+      allScopes in
+  -- Add in separate handling of base/stack pointer scopes
+  criticalScopes ++ filteredScopes where
 
     create :: [(Int, UsedReg)] -> [RegScope]
     create [] = []
@@ -60,6 +70,12 @@ getScopes instructions =
             let restWithoutReg = removeReferences regScope all in
             regScope : create restWithoutReg
           Nothing -> create rest
+
+    criticalScopes :: [RegScope]
+    criticalScopes =
+      [RegScope 0 numInstructions (read "bp") RegLocalFixed Nothing,
+       RegScope 0 numInstructions (read "sp") RegLocalFixed Nothing] where
+      numInstructions = length instructions
 
     removeReferences :: RegScope -> [(Int, UsedReg)] -> [(Int, UsedReg)]
     removeReferences (RegScope start end reg _ _) =

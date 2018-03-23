@@ -83,11 +83,7 @@ allocate regs regFunc program =
     functionScopes = do
       func <- Asm.funcs program
       let instructions = Asm.instructions func
-      return $ filter
-        -- Filter scopes for base/stack pointer as we're handling this
-        -- separately
-        (\(RegScope _ _ r _ _) -> r `notElem` [read "bp", read "sp"])
-        (getScopes instructions)
+      return $ getScopes instructions
 
     -- | Allocate the scopes for each function
     allocatedScopes :: [[RegScope]]
@@ -112,8 +108,6 @@ allocate regs regFunc program =
 
       getRegMap :: Int -> [(Reg, Reg)]
       getRegMap i =
-        -- Append the base/stack pointer replacements
-        (read "bp", bpReplacement) : (read "sp", spReplacement) :
         -- Map the scopes to their register replacements
         map (\(RegScope _ _ from _ (Just to)) -> (from, to))
         -- Filter for scopes that are applicable at this index
