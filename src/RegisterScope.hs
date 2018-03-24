@@ -1,7 +1,8 @@
 module RegisterScope (
     RegScope (..),
     RegChangable (..),
-    getScopes)
+    getScopes,
+    getScopesInFunction)
   where
 
 import Text.Read (readMaybe)
@@ -42,8 +43,14 @@ data RegScope = RegScope {
   allocatedReg :: Maybe Reg
 } deriving (Eq, Show)
 
-getScopes :: [Asm.Instruction] -> [RegScope]
-getScopes instructions =
+getScopes :: Asm.Program -> [[RegScope]]
+getScopes program = do
+  func <- Asm.funcs program
+  let instructions = Asm.instructions func
+  return $ getScopesInFunction instructions
+
+getScopesInFunction :: [Asm.Instruction] -> [RegScope]
+getScopesInFunction instructions =
   -- Index all the instructions
   let indexedIns = zip [0..] instructions in
   -- Get where each register is used

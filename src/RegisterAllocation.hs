@@ -13,13 +13,15 @@ import RegisterScope (RegScope (..), RegChangable (..), getScopes)
 allocateTwo
   :: Asm.Program -- ^ The first program to change the registers for
   -> Asm.Program -- ^ The second program to change the registers for
+  -> [[RegScope]] -- ^ The register scopes of the first program
+  -> [[RegScope]] -- ^ The register scopes of the secondprogram
   -> (Asm.Program, Asm.Program) -- ^ The programs with modified registers
-allocateTwo prog0 prog1 =
+allocateTwo prog0 prog1 scopes0 scopes1 =
   let
     ([bp0, sp0, bp1, sp1], restRegs) =
       takeNRegisters 4 allRegisters (regFunc' (reverse . partitionFunc id)) in
-  (allocate bp0 sp0 restRegs regFunc0 prog0,
-   allocate bp1 sp1 restRegs regFunc1 prog1)
+  (allocate bp0 sp0 restRegs regFunc0 scopes0 prog0,
+   allocate bp1 sp1 restRegs regFunc1 scopes1 prog1)
   where
     regFunc' :: ([Reg] -> [Reg]) -> [Reg] -> (Reg, [Reg])
     regFunc' f regs = let fRegs = f regs in (head fRegs, tail fRegs)
@@ -37,13 +39,14 @@ allocateTwo prog0 prog1 =
 
 -- | Allocate a set of registers to a series of instructions
 allocate
-  :: Reg -- The base pointer register
-  -> Reg -- The stack pointer register
+  :: Reg -- ^ The base pointer register
+  -> Reg -- ^ The stack pointer register
   -> [Reg] -- ^ The registers to allocate across the instructions
   -> ([Reg] -> (Reg, [Reg])) -- ^ Function for getting the next register to use
+  -> [[RegScope]] -- ^ The register scopes
   -> Asm.Program -- ^ The program to change the registers for
   -> Asm.Program -- ^ The program with modified registers
-allocate bpReplacement spReplacement regs regFunc program =
+allocate bpReplacement spReplacement regs regFunc functionScopes program =
   -- Bind the register values
   let bindedProgram = program {
     Asm.funcs = zipWith bindFunction (Asm.funcs program) allocatedScopes
@@ -51,13 +54,6 @@ allocate bpReplacement spReplacement regs regFunc program =
   -- Handle the base/stack pointer replacements
   insertCriticalRegisterManagement bpReplacement spReplacement bindedProgram
   where
-    -- | The initial register scopes in the program
-    functionScopes :: [[RegScope]]
-    functionScopes = do
-      func <- Asm.funcs program
-      let instructions = Asm.instructions func
-      return $ getScopes instructions
-
     -- | Allocate the scopes for each function
     allocatedScopes :: [[RegScope]]
     allocatedScopes =

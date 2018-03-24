@@ -34,7 +34,7 @@ postfixNames postfix prog = prog {
   -- | Add postfixes to function call label
   postfixCalls :: Asm.Instruction -> Asm.Instruction
   postfixCalls i
-    | Asm.command i == "call" =
+    | Asm.command i `elem` ["call", "jmp"] =
       i {Asm.arguments = map (++ postfix) (Asm.arguments i)}
     | otherwise = i
 

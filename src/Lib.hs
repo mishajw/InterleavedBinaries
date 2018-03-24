@@ -11,6 +11,7 @@ import ImplicitRegisters (makeExplicit)
 import RegisterAllocation (allocateTwo)
 import ProgramInterleave (simpleInterleave)
 import StackReverse (reverseStack)
+import RegisterScope (getScopes)
 import System.FilePath.Posix ((</>), (<.>), dropExtension, takeFileName)
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (readProcessWithExitCode)
@@ -26,7 +27,10 @@ interleavePrograms prog0 prog1 =
   let prog0Explicit = makeExplicit prog0 in
   let prog1Explicit = makeExplicit prog1 in
   let prog1Rev = reverseStack prog1 in
-  let (prog0Alloc, prog1Alloc) = allocateTwo prog0Explicit prog1Rev in
+  let prog0Scopes = getScopes prog0Explicit in
+  let prog1Scopes = getScopes prog1Rev in
+  let (prog0Alloc, prog1Alloc) = allocateTwo prog0Explicit prog1Rev
+                                             prog0Scopes prog1Scopes in
   simpleInterleave prog0Alloc prog1Alloc
 
 -- | Interleave two .c files
