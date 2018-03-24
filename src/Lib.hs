@@ -7,7 +7,8 @@ module Lib (
   saveProgram)
   where
 
-import AsmTransformer (transform)
+import ImplicitRegisters (makeExplicit)
+import RegisterAllocation (allocateTwo)
 import ProgramInterleave (simpleInterleave)
 import StackReverse (reverseStack)
 import System.FilePath.Posix ((</>), (<.>), dropExtension, takeFileName)
@@ -22,10 +23,11 @@ interleavePrograms
   -> Asm.Program -- ^ The second program to interleave
   -> Asm.Program -- ^ The interleaved program
 interleavePrograms prog0 prog1 =
+  let prog0Explicit = makeExplicit prog0 in
+  let prog1Explicit = makeExplicit prog1 in
   let prog1Rev = reverseStack prog1 in
-  let prog0Trans = transform 0 prog0 in
-  let prog1Trans = transform 1 prog1Rev in
-  simpleInterleave prog0Trans prog1Trans
+  let (prog0Alloc, prog1Alloc) = allocateTwo prog0Explicit prog1Rev in
+  simpleInterleave prog0Alloc prog1Alloc
 
 -- | Interleave two .c files
 -- Delagates to @interleavePrograms@

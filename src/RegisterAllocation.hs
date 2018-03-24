@@ -1,22 +1,49 @@
-module RegisterAllocation (
-    allocate)
+module RegisterAllocation (allocateTwo)
   where
 
 import Text.Regex (mkRegex, matchRegex, matchRegexAll)
 import Data.Maybe (mapMaybe, isNothing, fromMaybe)
-import Data.List (delete, isInfixOf, nub, find)
+import Data.List (delete, isInfixOf, nub, find, sort, sortBy, partition)
 import Data.Text (replace, pack, unpack, Text)
 import qualified Asm
-import Registers (Reg (..), SizedReg (..), Size (..))
+import Registers (Reg (..), SizedReg (..), Size (..), basePointer, stackPointer,
+                  allRegisters, parameterRegisters, returnRegister)
 import RegisterScope (RegScope (..), RegChangable (..), getScopes)
+
+allocateTwo
+  :: Asm.Program -- ^ The first program to change the registers for
+  -> Asm.Program -- ^ The second program to change the registers for
+  -> (Asm.Program, Asm.Program) -- ^ The programs with modified registers
+allocateTwo prog0 prog1 =
+  let
+    ([bp0, sp0, bp1, sp1], restRegs) =
+      takeNRegisters 4 allRegisters (regFunc' (reverse . partitionFunc id)) in
+  (allocate bp0 sp0 restRegs regFunc0 prog0,
+   allocate bp1 sp1 restRegs regFunc1 prog1)
+  where
+    regFunc' :: ([Reg] -> [Reg]) -> [Reg] -> (Reg, [Reg])
+    regFunc' f regs = let fRegs = f regs in (head fRegs, tail fRegs)
+
+    partitionFunc f regs =
+      let
+        (specRegs, otherRegs) =
+          partition (\r -> r `elem` parameterRegisters ||
+                       r == basePointer || r == stackPointer ||
+                       r == returnRegister) regs in
+      f specRegs ++ f otherRegs
+
+    regFunc0 = regFunc' (partitionFunc sort)
+    regFunc1 = regFunc' (partitionFunc $ sortBy (flip compare))
 
 -- | Allocate a set of registers to a series of instructions
 allocate
-  :: [Reg] -- ^ The registers to allocate across the instructions
+  :: Reg -- The base pointer register
+  -> Reg -- The stack pointer register
+  -> [Reg] -- ^ The registers to allocate across the instructions
   -> ([Reg] -> (Reg, [Reg])) -- ^ Function for getting the next register to use
   -> Asm.Program -- ^ The program to change the registers for
   -> Asm.Program -- ^ The program with modified registers
-allocate regs regFunc program =
+allocate bpReplacement spReplacement regs regFunc program =
   -- Bind the register values
   let bindedProgram = program {
     Asm.funcs = zipWith bindFunction (Asm.funcs program) allocatedScopes
@@ -24,18 +51,6 @@ allocate regs regFunc program =
   -- Handle the base/stack pointer replacements
   insertCriticalRegisterManagement bpReplacement spReplacement bindedProgram
   where
-    -- | Set replacement registers for base/stack pointers
-    bpReplacement :: Reg
-    spReplacement :: Reg
-    (bpReplacement, spReplacement) =
-      (fromMaybe (error "Couldn't find BP replacement") (getReg (read "bp")),
-       fromMaybe (error "Couldn't find SP replacement") (getReg (read "sp")))
-      where
-      getReg :: Reg -> Maybe Reg
-      getReg reg = do
-        scope <- find (\rs -> register rs == reg) (concat allocatedScopes)
-        allocatedReg scope
-
     -- | The initial register scopes in the program
     functionScopes :: [[RegScope]]
     functionScopes = do
@@ -48,7 +63,8 @@ allocate regs regFunc program =
     allocatedScopes =
       map (allocateFlexibleScopes regs regFunc) $
       allocateLocalFixedScopes regs regFunc $
-      allocateGlobalFixedScopes functionScopes
+      allocateGlobalFixedScopes $
+      allocateCriticalScopes bpReplacement spReplacement functionScopes
 
     -- | Bind all scoped variable in some function
     bindFunction :: Asm.Func -> [RegScope] -> Asm.Func
@@ -70,6 +86,12 @@ allocate regs regFunc program =
         map (\(RegScope _ _ from _ (Just to)) -> (from, to))
         -- Filter for scopes that are applicable at this index
         (filter (\(RegScope s e _ _ _) -> s <= i && i <= e) scopes)
+
+allocateCriticalScopes :: Reg -> Reg -> [[RegScope]] -> [[RegScope]]
+allocateCriticalScopes bpReplacement spReplacement = map (map f) where
+  f rs | register rs == basePointer = rs {allocatedReg = Just bpReplacement}
+  f rs | register rs == stackPointer = rs {allocatedReg = Just spReplacement}
+  f rs = rs
 
 allocateGlobalFixedScopes
   :: [[RegScope]]
@@ -108,13 +130,15 @@ allocateLocalFixedScopes regs regFunc = allocateLocalFixedScopes' regs where
   getRegBinding allScopes reg =
     case concatMap getPossibleInFunc allScopes of
       [] -> Nothing
-      possibleRegs -> let (reg, _) = regFunc possibleRegs in Just reg
+      possibleRegs -> let (reg, _) = regFunc (nub possibleRegs) in Just reg
     where
     getPossibleInFunc :: [RegScope] -> [Reg]
     getPossibleInFunc scopes =
       let
         relevantScopes =
-          filter (\s -> register s == reg && changable s == RegLocalFixed)
+          filter (\s -> register s == reg &&
+                        changable s == RegLocalFixed &&
+                        isNothing (allocatedReg s))
                  scopes in
       concatMap (\s -> possibleRegsForScope regs s scopes) relevantScopes
 

@@ -1,28 +1,14 @@
-module AsmTransformer (transform)
+module ImplicitRegisters (makeExplicit)
   where
 
-import Data.List (sort, sortBy)
+import Data.List (sort, sortBy, partition, (\\))
 import qualified Asm
 import qualified RegisterAllocation
-import Registers (Reg (..), allRegisters)
+import Registers (Reg (..), allRegisters, parameterRegisters, basePointer,
+                  stackPointer)
 
--- | Transform a list of instructions so it can be used in interleaving
-transform
-  :: Int -- ^ The index of the program (typically 0 or 1)
-  -> Asm.Program -- ^ The program to transform
-  -> Asm.Program -- ^ The transformed program
-transform i prog =
-  let explicitProg = resolveImplicitRegisters prog in
-  let regFunc = if i == 0
-                then regFunc' sort
-                else regFunc' (sortBy (flip compare)) in
-  RegisterAllocation.allocate allRegisters regFunc explicitProg
-  where
-    regFunc' :: ([Reg] -> [Reg]) -> [Reg] -> (Reg, [Reg])
-    regFunc' f regs = let fRegs = f regs in (head fRegs, tail fRegs)
-
-resolveImplicitRegisters :: Asm.Program -> Asm.Program
-resolveImplicitRegisters prog = prog {
+makeExplicit :: Asm.Program -> Asm.Program
+makeExplicit prog = prog {
     Asm.funcs = map resolveFunction (Asm.funcs prog)
   } where
 
