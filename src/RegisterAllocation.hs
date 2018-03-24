@@ -206,9 +206,9 @@ insertCriticalRegisterManagement bp sp =
     criticalRegisterManagement :: [Asm.Instruction]
     criticalRegisterManagement =
       [Asm.Instruction
-        "movq" ["%rbp", '%' : show (SizedReg bp Size64)] [],
+        "movq" ["%rbp", '%' : show (SizedReg bp Size64)] [] False,
        Asm.Instruction
-        "movq" ["%rsp", '%' : show (SizedReg sp Size64)] []]
+        "movq" ["%rsp", '%' : show (SizedReg sp Size64)] [] False]
 
 -- | Take N registers from the pool given some register function
 takeNRegisters :: Int -> [Reg] -> ([Reg] -> (Reg, [Reg])) -> ([Reg], [Reg])

@@ -40,10 +40,12 @@ reverseStack prog = prog {
 
   -- | Reverse a stack addition/subtraction
   handleRegModification :: Asm.Instruction -> Asm.Instruction
-  handleRegModification (Asm.Instruction "addq" [num, '%' : regName] ls)
-    | isStackRegister regName = Asm.Instruction "subq" [num, '%' : regName] ls
-  handleRegModification (Asm.Instruction "subq" [num, '%' : regName] ls)
-    | isStackRegister regName = Asm.Instruction "addq" [num, '%' : regName] ls
+  handleRegModification (Asm.Instruction "addq" [num, '%' : regName] ls tied)
+    | isStackRegister regName =
+      Asm.Instruction "subq" [num, '%' : regName] ls tied
+  handleRegModification (Asm.Instruction "subq" [num, '%' : regName] ls tied)
+    | isStackRegister regName =
+      Asm.Instruction "addq" [num, '%' : regName] ls tied
   handleRegModification i = i
 
   -- | Test whether a register is used for the stack

@@ -122,7 +122,7 @@ getRegScope ur@(UsedReg reg _ _) usedRegs =
 getUsedRegisters
   :: Asm.Instruction -- ^ The instruction using the registers
   -> [UsedReg] -- ^ Registers used in the instruction
-getUsedRegisters (Asm.Instruction com args _)
+getUsedRegisters (Asm.Instruction com args _ _)
   | com `elem` ["movq", "leaq", "movl"] =
     let [reads, writes] = args in
     getRegsInString RegRead reads ++ getRegsInString RegWrite writes

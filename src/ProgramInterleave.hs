@@ -1,5 +1,4 @@
 module ProgramInterleave (
-  interleave,
   simpleInterleave)
   where
 
@@ -41,23 +40,28 @@ simpleInterleave prog1 prog2 =
       Asm.Func {
         Asm.name = Asm.name f1,
         Asm.instructions =
-          concat $
-          zipWith combineInstructions
-            (Asm.instructions f1) (Asm.instructions f2)
+          interleaveInstructions (Asm.instructions f1) (Asm.instructions f2)
       }
 
-interleave :: [Asm.Instruction] -> [Asm.Instruction] -> [Asm.Instruction]
-interleave a b =
-  let aMain = extractMain a in
-  let bMain = extractMain b in
-  mainPrefix ++ concat (zipWith combineInstructions aMain bMain)
-  where
-    extractMain :: [Asm.Instruction] -> [Asm.Instruction]
-    extractMain = dropWhile (\a -> "main" `notElem` Asm.labels a)
+interleaveInstructions
+  :: [Asm.Instruction] -> [Asm.Instruction] -> [Asm.Instruction]
+interleaveInstructions = interleaveInstructions' 0 where
+  interleaveInstructions'
+    :: Int -> [Asm.Instruction] -> [Asm.Instruction] -> [Asm.Instruction]
+  interleaveInstructions' balance (a : as) bs | balance >= 0 =
+    let (tied, as') = takeTied (a : as) in
+    tied ++ interleaveInstructions' (balance - length tied) as' bs
+  interleaveInstructions' balance as (b : bs) =
+    let (tied, bs') = takeTied (b : bs) in
+    tied ++ interleaveInstructions' (balance + length tied) as bs'
+  interleaveInstructions' _ [] bs = bs
+  interleaveInstructions' _ as [] = as
 
-    mainPrefix :: [Asm.Instruction]
-    mainPrefix = [Asm.Instruction ".globl" ["main"] [],
-                  Asm.Instruction ".type" ["main", "@function"] []]
+  takeTied :: [Asm.Instruction] -> ([Asm.Instruction], [Asm.Instruction])
+  takeTied (i : rest) | Asm.tiedToNext i =
+    let (tiedTo, rest') = takeTied rest in (i : tiedTo, rest')
+  takeTied (i : rest) = ([i], rest)
+  takeTied [] = ([], [])
 
 combineInstructions
   :: Asm.Instruction -> Asm.Instruction -> [Asm.Instruction]

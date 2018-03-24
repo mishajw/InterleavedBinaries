@@ -20,7 +20,8 @@ import Text.Regex (mkRegex, matchRegex)
 data Instruction = Instruction {
   command :: String,
   arguments :: [String],
-  labels :: [String]
+  labels :: [String],
+  tiedToNext :: Bool
 } deriving Show
 
 data Func = Func {
@@ -138,15 +139,17 @@ stringsToInstructions = stringsToInstructions' [] where
     case (matchRegex labelRegex i, matchRegex insRegex i) of
       (Just [label], _) -> stringsToInstructions' (label : labels) instructions
       (_, Just [command, arguments]) ->
-        Instruction command (splitOn ", " arguments) labels :
+        Instruction command (splitOn ", " arguments) labels False :
         stringsToInstructions' [] instructions
-      _ -> Instruction i [] labels : stringsToInstructions' [] instructions
+      _ ->
+        Instruction i [] labels False :
+        stringsToInstructions' [] instructions
 
 instructionsToStrings :: [Instruction] -> [String]
 instructionsToStrings = concatMap instructionToString
 
 instructionToString :: Instruction -> [String]
-instructionToString (Instruction com args labels) =
+instructionToString (Instruction com args labels _) =
   map (++ ":") labels ++
   [com ++ "\t" ++ intercalate ", " args]
 

@@ -21,27 +21,28 @@ makeExplicit prog = prog {
   } where
 
     resolveInstruction :: Int -> Asm.Instruction -> [Asm.Instruction]
-    resolveInstruction i instruction@(Asm.Instruction com args labels) =
+    resolveInstruction i instruction@(Asm.Instruction com args labels tied) =
       case com of
         "pushq" ->
-          [Asm.Instruction "subq" ["$8", "%rsp"] labels,
-           Asm.Instruction "movq" (args ++ ["(%rsp)"]) []]
+          [Asm.Instruction "subq" ["$8", "%rsp"] labels tied,
+           Asm.Instruction "movq" (args ++ ["(%rsp)"]) [] tied]
         "popq" ->
-          [Asm.Instruction "movq" ("(%rsp)" : args) labels,
-           Asm.Instruction "addq" ["$8", "%rsp"] []]
+          [Asm.Instruction "movq" ("(%rsp)" : args) labels tied,
+           Asm.Instruction "addq" ["$8", "%rsp"] [] tied]
         "enter" ->
-          resolveInstruction i (Asm.Instruction "pushq" ["%rbp"] []) ++
-          [Asm.Instruction "movq" ["%rsp", "%rbp"] labels]
+          resolveInstruction i (Asm.Instruction "pushq" ["%rbp"] [] tied) ++
+          [Asm.Instruction "movq" ["%rsp", "%rbp"] labels tied]
         "leave" ->
-          Asm.Instruction "movq" ["%rbp", "%rsp"] labels :
-          resolveInstruction i (Asm.Instruction "popq" ["%rbp"] [])
+          Asm.Instruction "movq" ["%rbp", "%rsp"] labels tied :
+          resolveInstruction i (Asm.Instruction "popq" ["%rbp"] [] tied)
         "call" ->
-          Asm.Instruction "leaq" [spareLabel ++ "(%rip)", spareReg64] labels :
-          resolveInstruction i (Asm.Instruction "pushq" [spareReg64] []) ++
-          [Asm.Instruction "jmp" args [],
-           Asm.Instruction "addq" ["$8", "%rsp"] [spareLabel]]
+          Asm.Instruction
+            "leaq" [spareLabel ++ "(%rip)", spareReg64] labels True :
+          resolveInstruction i (Asm.Instruction "pushq" [spareReg64] [] True) ++
+          [Asm.Instruction "jmp" args [] True,
+           Asm.Instruction "addq" ["$8", "%rsp"] [spareLabel] tied]
         "ret" ->
-          [Asm.Instruction "jmp" ["*(%rsp)"] labels]
+          [Asm.Instruction "jmp" ["*(%rsp)"] labels tied]
         _ -> [instruction]
 
       where
