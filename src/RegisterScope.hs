@@ -128,7 +128,7 @@ getUsedRegisters (Asm.Instruction com args _)
     getRegsInString RegRead reads ++ getRegsInString RegWrite writes
   | com `elem` ["subq", "addq"] =
     concatMap (getRegsInString RegRead) args
-  | com == "call" = functionUsedRegs RegLocalFixed
+  | com `elem` ["call", "jmp"] = functionUsedRegs RegLocalFixed
   | com == "syscall" = functionUsedRegs RegGlobalFixed
   | otherwise = []
 
