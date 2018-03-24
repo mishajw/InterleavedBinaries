@@ -26,7 +26,7 @@ interleavePrograms
 interleavePrograms prog0 prog1 =
   let prog0Explicit = makeExplicit prog0 in
   let prog1Explicit = makeExplicit prog1 in
-  let prog1Rev = reverseStack prog1 in
+  let prog1Rev = reverseStack prog1Explicit in
   let prog0Scopes = getScopes prog0Explicit in
   let prog1Scopes = getScopes prog1Rev in
   let (prog0Alloc, prog1Alloc) = allocateTwo prog0Explicit prog1Rev
