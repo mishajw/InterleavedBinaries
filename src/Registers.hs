@@ -2,7 +2,11 @@ module Registers (
     Reg (..),
     Size (..),
     SizedReg (..),
-    allRegisters)
+    allRegisters,
+    basePointer,
+    stackPointer,
+    parameterRegisters,
+    returnRegister)
   where
 
 import Data.Maybe (catMaybes)
@@ -16,6 +20,18 @@ validRegisterNames =
 
 allRegisters :: [Reg]
 allRegisters = map read validRegisterNames
+
+basePointer :: Reg
+basePointer = read "bp"
+
+stackPointer :: Reg
+stackPointer = read "sp"
+
+parameterRegisters :: [Reg]
+parameterRegisters = map read ["si", "di", "dx", "cx", "r8", "r9"]
+
+returnRegister :: Reg
+returnRegister = read "ax"
 
 -- | Reference to a register (unsized)
 newtype Reg = Reg { name :: String } deriving Eq

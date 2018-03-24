@@ -7,7 +7,7 @@ module RegisterScope (
 import Text.Read (readMaybe)
 import Text.Regex (mkRegex, matchRegexAll)
 import Data.Maybe (mapMaybe)
-import Registers (Reg, SizedReg (..))
+import Registers (Reg, SizedReg (..), parameterRegisters, returnRegister)
 import qualified Asm
 
 -- Whether a register was read from or written to
@@ -129,16 +129,12 @@ getUsedRegisters (Asm.Instruction com args _)
 -- registers
 functionUsedRegs :: RegChangable -> [UsedReg]
 functionUsedRegs changable =
-  UsedReg (read "ax") RegWrite changable :
-  map
-  (\s -> UsedReg (read s) RegRead changable)
-  ["si", "di", "dx", "cx", "r8", "r9"]
+  UsedReg returnRegister RegWrite changable :
+  map (\r -> UsedReg r RegRead changable) parameterRegisters
 
 functionBeginRegs :: [UsedReg]
 functionBeginRegs =
-  map
-  (\s -> UsedReg (read s) RegWrite RegLocalFixed)
-  ["si", "di", "dx", "cx", "r8", "r9"]
+  map (\r -> UsedReg r RegWrite RegLocalFixed) parameterRegisters
 
 -- | Get a list of registers mentioned in a string
 -- TODO: Clean up double case of
