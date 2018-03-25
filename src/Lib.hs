@@ -9,9 +9,10 @@ module Lib (
 
 import ImplicitRegisters (makeExplicit)
 import RegisterAllocation (allocateTwo)
-import ProgramInterleave (simpleInterleave)
+import ProgramInterleave (interleave)
 import StackReverse (reverseStack)
 import RegisterScope (getScopes)
+import NameResolver (postfixNames)
 import System.FilePath.Posix ((</>), (<.>), dropExtension, takeFileName)
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (readProcessWithExitCode)
@@ -31,7 +32,9 @@ interleavePrograms prog0 prog1 =
   let prog1Scopes = getScopes prog1Rev in
   let (prog0Alloc, prog1Alloc) = allocateTwo prog0Explicit prog1Rev
                                              prog0Scopes prog1Scopes in
-  simpleInterleave prog0Alloc prog1Alloc
+  let prog0Resolved = postfixNames "_0" prog0Alloc in
+  let prog1Resolved = postfixNames "_1" prog1Alloc in
+  interleave prog0Resolved prog1Resolved
 
 -- | Interleave two .c files
 -- Delagates to @interleavePrograms@

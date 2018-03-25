@@ -5,6 +5,7 @@ module Asm (
     Program (..),
     insertAtLabel,
     insertInFunction,
+    insertEndFuncton,
     stringToProgram,
     programToString,
     mapArgs)
@@ -65,6 +66,15 @@ insertInFunction funcName ins prog = prog {
       func {instructions = insertAtLabel funcName ins (instructions func)}
     else
       func
+
+insertEndFuncton :: String -> [Asm.Instruction] -> Program -> Program
+insertEndFuncton funcName ins prog = prog {
+  funcs = map f (funcs prog)
+} where
+  f func | name func == funcName = func {
+    Asm.instructions = Asm.instructions func ++ ins
+  }
+  f func = func
 
 -- | Create a program from an ASM string
 stringToProgram :: String -> Program
